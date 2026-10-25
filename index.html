@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -55,6 +54,7 @@
     grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 20px 14px;
   }
+  #memberGrid { grid-template-columns: repeat(var(--group-columns, 5), minmax(0, 1fr)); }
   .card { text-align: center; cursor: pointer; min-width: 0; }
   .card img {
     width: 100%;
@@ -62,6 +62,9 @@
     border-radius: 9px;
     box-shadow: 0 3px 10px #34224b20;
     transition: transform .2s, box-shadow .2s;
+    background: #eee7f5;
+    aspect-ratio: 5 / 7;
+    object-fit: contain;
   }
   .card:hover img {
     transform: translateY(-4px);
@@ -83,8 +86,11 @@
     display: block; background: #eee7f5;
   }
   .group h3 { text-align: center; padding: 12px; margin: 0; }
-  .back { margin-bottom: 18px; }
+  .back { margin-bottom: 18px; padding: 9px 14px; border: 0; border-radius: 10px; background: #eee8f8; color: #493761; cursor: pointer; }
   .hidden { display: none !important; }
+  .status { padding: 20px; text-align: center; color: #796d87; }
+  .error { color: #a12b52; }
+  .group-heading { margin-top: 0; }
   .modal {
     position: fixed; inset: 0; background: #171020e8;
     display: flex; justify-content: center; align-items: center;
@@ -102,10 +108,14 @@
   }
   @media (max-width: 900px) {
     .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    #memberGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   }
   @media (max-width: 560px) {
     main { padding: 16px; }
     .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px; }
+    #memberGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    header { padding-top: 28px; }
+    header h1 { font-size: 24px; }
   }
 </style>
 </head>
@@ -115,127 +125,272 @@
   <p>A collection of custom idol trading cards</p>
 </header>
 <nav>
-  <button id="allTab" class="active" onclick="showAll()">All Cards</button>
-  <button id="groupsTab" onclick="showGroups()">Groups</button>
+  <button id="allTab" class="active" type="button">All Cards</button>
+  <button id="groupsTab" type="button">Groups</button>
 </nav>
 <main>
   <section id="allSection">
     <div class="controls">
-      <input id="search" placeholder="Search idol or card number..." oninput="renderCards()">
-      <select id="groupFilter" onchange="renderCards()">
+      <input id="search" placeholder="Search idol or card number..." aria-label="Search cards">
+      <select id="groupFilter" aria-label="Filter by group">
         <option value="">All groups</option>
       </select>
-      <select id="rarityFilter" onchange="renderCards()">
-        <option value="">All rarities</option>
+      <select id="typeFilter" aria-label="Filter by type">
+        <option value="">All types</option>
       </select>
     </div>
+    <div id="cardStatus" class="status">Loading cards…</div>
     <div id="cardGrid" class="grid"></div>
   </section>
   <section id="groupsSection" class="hidden">
+    <div id="groupStatus" class="status">Loading groups…</div>
     <div id="groupGrid" class="group-grid"></div>
     <div id="groupDetail" class="hidden">
-      <button class="back" onclick="backToGroups()">← All groups</button>
-      <h2 id="groupTitle"></h2>
+      <button class="back" id="backButton" type="button">← All groups</button>
+      <h2 id="groupTitle" class="group-heading"></h2>
       <p id="groupCount"></p>
       <div id="memberGrid" class="grid"></div>
     </div>
   </section>
 </main>
-<div id="modal" class="modal hidden" onclick="closeModal()">
-  <button class="close" aria-label="Close" onclick="closeModal()">×</button>
-  <img id="modalImage" alt="Enlarged card" onclick="event.stopPropagation()">
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Card preview">
+  <button class="close" id="closeButton" aria-label="Close" type="button">×</button>
+  <img id="modalImage" alt="Enlarged card">
 </div>
 <script>
-/* Replace these sample entries with your card data later. */
-const cards = [];
-const groups = [];
+/*
+  Google Sheets CSV feeds. The spreadsheet columns are:
+  Cards: Set, Group, Number, Card, Image, Type, Show on Site
+  Groups: Set, Group, Group Photo, Cards per Row, Show on Site
 
+  Public image files go in:
+  images/cards/   (card images)
+  images/groups/  (group photos)
+*/
+const CARDS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPo-0Xov1rDVFvVUCRqPxpAmOO_KBs4e5k9Q6H5Cp5wCaLJXT_ShDQMKSo2ITWv3h3aoVPxbub4DRq/pub?gid=0&single=true&output=csv";
+const GROUPS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPo-0Xov1rDVFvVUCRqPxpAmOO_KBs4e5k9Q6H5Cp5wCaLJXT_ShDQMKSo2ITWv3h3aoVPxbub4DRq/pub?gid=1324230279&single=true&output=csv";
+
+const CARD_IMAGE_FOLDER = "images/cards/";
+const GROUP_IMAGE_FOLDER = "images/groups/";
+
+let cards = [];
+let groups = [];
+
+function truthy(value) {
+  return ["true", "yes", "1", "y"].includes(String(value ?? "").trim().toLowerCase());
+}
+function clean(value) {
+  return String(value ?? "").trim();
+}
+function normaliseHeader(value) {
+  return clean(value).toLowerCase().replace(/[\s_-]+/g, "");
+}
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (quoted && text[i + 1] === '"') { field += '"'; i++; }
+      else quoted = !quoted;
+    } else if (ch === "," && !quoted) {
+      row.push(field); field = "";
+    } else if ((ch === "\n" || ch === "\r") && !quoted) {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); field = "";
+      if (row.some(cell => clean(cell) !== "")) rows.push(row);
+      row = [];
+    } else {
+      field += ch;
+    }
+  }
+  if (field.length || row.length) {
+    row.push(field);
+    if (row.some(cell => clean(cell) !== "")) rows.push(row);
+  }
+  if (!rows.length) return [];
+  const headers = rows.shift().map(normaliseHeader);
+  return rows.map(values => {
+    const obj = {};
+    headers.forEach((header, i) => { if (header) obj[header] = clean(values[i]); });
+    return obj;
+  });
+}
+async function fetchCSV(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error("Could not load published spreadsheet (HTTP " + response.status + ").");
+  const text = await response.text();
+  if (!text || text.trim().startsWith("<!DOCTYPE html")) {
+    throw new Error("Google Sheets did not return CSV data. Check that the tab is published as CSV.");
+  }
+  return parseCSV(text);
+}
+function imagePath(folder, filename) {
+  const name = clean(filename);
+  if (!name) return "";
+  // Allows either a filename or a full image URL in the spreadsheet.
+  if (/^https?:\/\//i.test(name)) return name;
+  return folder + name.split("/").map(encodeURIComponent).join("/");
+}
+function numberValue(value) {
+  const parsed = Number(clean(value).replace(/^#/, ""));
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+}
+function cardFromRow(row) {
+  return {
+    set: row.set || "",
+    group: row.group || "",
+    number: row.number || "",
+    member: row.card || "",
+    image: imagePath(CARD_IMAGE_FOLDER, row.image),
+    type: row.type || "",
+    show: truthy(row.showonsite)
+  };
+}
+function groupFromRow(row) {
+  const parsedColumns = parseInt(row.cardsperrow, 10);
+  return {
+    set: row.set || "",
+    name: row.group || "",
+    image: imagePath(GROUP_IMAGE_FOLDER, row.groupphoto),
+    columns: Number.isFinite(parsedColumns) && parsedColumns > 0 ? Math.min(parsedColumns, 12) : 5,
+    show: truthy(row.showonsite)
+  };
+}
 function showAll() {
-  document.getElementById('allSection').classList.remove('hidden');
-  document.getElementById('groupsSection').classList.add('hidden');
-  document.getElementById('allTab').classList.add('active');
-  document.getElementById('groupsTab').classList.remove('active');
+  document.getElementById("allSection").classList.remove("hidden");
+  document.getElementById("groupsSection").classList.add("hidden");
+  document.getElementById("allTab").classList.add("active");
+  document.getElementById("groupsTab").classList.remove("active");
 }
 function showGroups() {
-  document.getElementById('allSection').classList.add('hidden');
-  document.getElementById('groupsSection').classList.remove('hidden');
-  document.getElementById('allTab').classList.remove('active');
-  document.getElementById('groupsTab').classList.add('active');
-  document.getElementById('groupGrid').classList.remove('hidden');
-  document.getElementById('groupDetail').classList.add('hidden');
+  document.getElementById("allSection").classList.add("hidden");
+  document.getElementById("groupsSection").classList.remove("hidden");
+  document.getElementById("allTab").classList.remove("active");
+  document.getElementById("groupsTab").classList.add("active");
+  document.getElementById("groupGrid").classList.remove("hidden");
+  document.getElementById("groupDetail").classList.add("hidden");
 }
 function cardElement(card) {
-  const el = document.createElement('div');
-  el.className = 'card';
-  const img = document.createElement('img');
+  const el = document.createElement("div");
+  el.className = "card";
+  const img = document.createElement("img");
   img.src = card.image;
-  img.alt = card.member;
-  const name = document.createElement('h3');
-  name.textContent = card.member;
-  const caption = document.createElement('p');
-  caption.textContent = `${card.group} · #${card.number}`;
+  img.alt = card.member || "Card";
+  img.loading = "lazy";
+  img.onerror = () => { img.style.visibility = "hidden"; };
+  const name = document.createElement("h3");
+  name.textContent = card.member || "Unnamed card";
+  const caption = document.createElement("p");
+  caption.textContent = `${card.group}${card.number ? " · #" + card.number : ""}`;
   el.append(img, name, caption);
-  el.onclick = () => {
-    document.getElementById('modalImage').src = card.preview || card.image;
-    document.getElementById('modal').classList.remove('hidden');
+  el.tabIndex = 0;
+  el.setAttribute("role", "button");
+  el.setAttribute("aria-label", "Preview " + (card.member || "card"));
+  const open = () => {
+    document.getElementById("modalImage").src = card.image;
+    document.getElementById("modal").classList.remove("hidden");
   };
+  el.addEventListener("click", open);
+  el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
   return el;
 }
 function renderCards(list = cards) {
-  const search = document.getElementById('search').value.toLowerCase();
-  const group = document.getElementById('groupFilter').value;
-  const rarity = document.getElementById('rarityFilter').value;
+  const search = document.getElementById("search").value.trim().toLowerCase();
+  const group = document.getElementById("groupFilter").value;
+  const type = document.getElementById("typeFilter").value;
   const filtered = list.filter(c =>
-    (`${c.member} ${c.number} ${c.group}`).toLowerCase().includes(search) &&
+    (`${c.member} ${c.number} ${c.group} ${c.type}`).toLowerCase().includes(search) &&
     (!group || c.group === group) &&
-    (!rarity || c.rarity === rarity)
+    (!type || c.type.toLowerCase() === type.toLowerCase())
   );
-  const grid = document.getElementById('cardGrid');
+  const grid = document.getElementById("cardGrid");
   grid.replaceChildren(...filtered.map(cardElement));
+  document.getElementById("cardStatus").textContent = filtered.length
+    ? `${filtered.length} card${filtered.length === 1 ? "" : "s"}`
+    : "No cards match. Check your spreadsheet entries and Show on Site settings.";
 }
 function openGroup(name) {
   const g = groups.find(x => x.name === name);
-  const list = cards.filter(c => c.group === name);
-  document.getElementById('groupGrid').classList.add('hidden');
-  document.getElementById('groupDetail').classList.remove('hidden');
-  document.getElementById('groupTitle').textContent = name;
-  document.getElementById('groupCount').textContent = `${list.length} cards`;
-  const grid = document.getElementById('memberGrid');
-  grid.style.gridTemplateColumns = `repeat(${g.columns || 5}, minmax(0, 1fr))`;
+  const list = cards.filter(c => c.group === name).sort((a, b) => numberValue(a.number) - numberValue(b.number));
+  document.getElementById("groupGrid").classList.add("hidden");
+  document.getElementById("groupDetail").classList.remove("hidden");
+  document.getElementById("groupTitle").textContent = name;
+  document.getElementById("groupCount").textContent = `${list.length} card${list.length === 1 ? "" : "s"}`;
+  const grid = document.getElementById("memberGrid");
+  grid.style.setProperty("--group-columns", g ? g.columns : 5);
   grid.replaceChildren(...list.map(cardElement));
 }
 function backToGroups() {
-  document.getElementById('groupGrid').classList.remove('hidden');
-  document.getElementById('groupDetail').classList.add('hidden');
+  document.getElementById("groupGrid").classList.remove("hidden");
+  document.getElementById("groupDetail").classList.add("hidden");
 }
 function closeModal() {
-  document.getElementById('modal').classList.add('hidden');
+  document.getElementById("modal").classList.add("hidden");
+  document.getElementById("modalImage").removeAttribute("src");
 }
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeModal();
-});
-function init() {
-  const groupNames = [...new Set(cards.map(c => c.group))];
-  const gf = document.getElementById('groupFilter');
-  groupNames.forEach(n => gf.add(new Option(n, n)));
-  const rf = document.getElementById('rarityFilter');
-  [...new Set(cards.map(c => c.rarity).filter(Boolean))]
-    .forEach(n => rf.add(new Option(n, n)));
-  renderCards();
-  const gg = document.getElementById('groupGrid');
+function fillSelect(select, values) {
+  const first = select.options[0];
+  select.replaceChildren(first);
+  values.forEach(value => select.add(new Option(value, value)));
+}
+function renderGroups() {
+  const gg = document.getElementById("groupGrid");
   gg.replaceChildren(...groups.map(g => {
-    const el = document.createElement('div');
-    el.className = 'group';
-    const img = document.createElement('img');
-    img.src = g.image;
+    const el = document.createElement("div");
+    el.className = "group";
+    const img = document.createElement("img");
+    img.src = g.image || "";
     img.alt = g.name;
-    const title = document.createElement('h3');
+    img.loading = "lazy";
+    img.onerror = () => { img.style.visibility = "hidden"; };
+    const title = document.createElement("h3");
     title.textContent = g.name;
     el.append(img, title);
-    el.onclick = () => openGroup(g.name);
+    el.addEventListener("click", () => openGroup(g.name));
     return el;
   }));
+  document.getElementById("groupStatus").textContent = groups.length
+    ? `${groups.length} group${groups.length === 1 ? "" : "s"}`
+    : "No groups are set to Show on Site = TRUE.";
 }
+async function init() {
+  const cardStatus = document.getElementById("cardStatus");
+  const groupStatus = document.getElementById("groupStatus");
+  try {
+    const [cardRows, groupRows] = await Promise.all([
+      fetchCSV(CARDS_CSV_URL),
+      fetchCSV(GROUPS_CSV_URL)
+    ]);
+    groups = groupRows.map(groupFromRow).filter(g => g.name && g.show);
+    const visibleGroupNames = new Set(groups.map(g => g.name));
+    cards = cardRows.map(cardFromRow)
+      .filter(c => c.member && c.image && c.show && visibleGroupNames.has(c.group))
+      .sort((a, b) => numberValue(a.number) - numberValue(b.number));
+
+    fillSelect(document.getElementById("groupFilter"), [...new Set(cards.map(c => c.group))]);
+    fillSelect(document.getElementById("typeFilter"), [...new Set(cards.map(c => c.type).filter(Boolean))]);
+    renderCards();
+    renderGroups();
+  } catch (error) {
+    console.error(error);
+    cardStatus.classList.add("error");
+    groupStatus.classList.add("error");
+    cardStatus.textContent = "Couldn't load the spreadsheet. Check that both tabs are published as CSV and that the links are correct, then refresh this page.";
+    groupStatus.textContent = "Couldn't load groups. Check the published Groups CSV link and refresh.";
+  }
+}
+document.getElementById("allTab").addEventListener("click", showAll);
+document.getElementById("groupsTab").addEventListener("click", showGroups);
+document.getElementById("backButton").addEventListener("click", backToGroups);
+document.getElementById("closeButton").addEventListener("click", closeModal);
+document.getElementById("modal").addEventListener("click", e => {
+  if (e.target.id === "modal") closeModal();
+});
+document.getElementById("search").addEventListener("input", () => renderCards());
+document.getElementById("groupFilter").addEventListener("change", () => renderCards());
+document.getElementById("typeFilter").addEventListener("change", () => renderCards());
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
 init();
 </script>
 </body>
