@@ -58,23 +58,81 @@
   #memberGrid {
     grid-template-columns: repeat(var(--group-columns, 5), minmax(0, 1fr));
   }
-  .card { text-align: center; cursor: pointer; min-width: 0; }
-  .card img {
-    width: 100%;
-    display: block;
-    border-radius: 9px;
-    box-shadow: 0 3px 10px #34224b20;
-    transition: transform .2s, box-shadow .2s;
-    background: #eee7f5;
-    aspect-ratio: 5 / 7;
-    object-fit: contain;
+
+.card {
+  text-align: center;
+  cursor: pointer;
+  min-width: 0;
+  perspective: 800px;
+}
+
+.card-art {
+  position: relative;
+  overflow: hidden;
+  border-radius: 9px;
+  aspect-ratio: 5 / 7;
+  background: #eee7f5;
+  box-shadow: 0 3px 10px #34224b20;
+  transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition: transform .12s ease-out, box-shadow .2s;
+  transform-style: preserve-3d;
+}
+
+.card-art img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.card-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--shine-opacity, 0);
+  background:
+    linear-gradient(
+      var(--shine-angle, 125deg),
+      transparent 15%,
+      rgba(255, 255, 255, .05) 25%,
+      rgba(255, 100, 220, .35) 35%,
+      rgba(100, 220, 255, .4) 45%,
+      rgba(255, 255, 180, .3) 55%,
+      transparent 70%
+    ),
+    radial-gradient(
+      circle at var(--shine-x, 50%) var(--shine-y, 50%),
+      rgba(255, 255, 255, .55),
+      transparent 55%
+    );
+  mix-blend-mode: screen;
+  transition: opacity .15s;
+}
+
+.card:hover .card-art {
+  box-shadow: 0 10px 25px #34224b35;
+}
+
+.card h3 {
+  font-size: 14px;
+  margin: 9px 0 4px;
+}
+
+.card p {
+  font-size: 12px;
+  color: #202e55;
+  margin: 0;
+}
+
+@media (hover: none) {
+  .card-art {
+    transform: none;
   }
-  .card:hover img {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 20px #34224b30;
-  }
-  .card h3 { font-size: 14px; margin: 9px 0 4px; }
-  .card p { font-size: 12px; color: #796d87; margin: 0; }
+}
 
   /* Groups gallery: 2 group photos per row */
   .group-grid {
@@ -344,22 +402,55 @@ function cardElement(card) {
   const el = document.createElement("div");
   el.className = "card";
 
+  const art = document.createElement("div");
+  art.className = "card-art";
+
   const img = document.createElement("img");
   img.src = card.image;
   img.alt = card.member || "Card";
   img.loading = "lazy";
+  img.draggable = false;
   img.onerror = () => { img.style.visibility = "hidden"; };
+
+  art.append(img);
 
   const name = document.createElement("h3");
   name.textContent = card.member || "Unnamed card";
 
   const caption = document.createElement("p");
-  caption.textContent = `${card.group}${card.number ? " · #" + card.number : ""}`;
+  caption.textContent =
+    `${card.group}${card.number ? " · #" + card.number : ""}`;
 
-  el.append(img, name, caption);
+  el.append(art, name, caption);
   el.tabIndex = 0;
   el.setAttribute("role", "button");
   el.setAttribute("aria-label", "Preview " + (card.member || "card"));
+
+  // Discourage right-click saving/opening and image dragging.
+  el.addEventListener("contextmenu", e => e.preventDefault());
+  el.addEventListener("dragstart", e => e.preventDefault());
+
+  // Mouse-controlled tilt and holographic shine.
+  el.addEventListener("pointermove", e => {
+    if (e.pointerType !== "mouse") return;
+
+    const rect = art.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+
+    art.style.setProperty("--tilt-y", `${(x - 0.5) * 24}deg`);
+    art.style.setProperty("--tilt-x", `${(0.5 - y) * 24}deg`);
+    art.style.setProperty("--shine-x", `${x * 100}%`);
+    art.style.setProperty("--shine-y", `${y * 100}%`);
+    art.style.setProperty("--shine-angle", `${120 + x * 100}deg`);
+    art.style.setProperty("--shine-opacity", "1");
+  });
+
+  el.addEventListener("pointerleave", () => {
+    art.style.setProperty("--tilt-x", "0deg");
+    art.style.setProperty("--tilt-y", "0deg");
+    art.style.setProperty("--shine-opacity", "0");
+  });
 
   const open = () => {
     document.getElementById("modalImage").src = card.image;
@@ -373,6 +464,7 @@ function cardElement(card) {
       open();
     }
   });
+
   return el;
 }
 
