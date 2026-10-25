@@ -1,0 +1,242 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Idol Card Dex</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #faf8ff;
+    color: #302743;
+  }
+  header {
+    text-align: center;
+    padding: 36px 16px 24px;
+    background: linear-gradient(135deg, #eadfff, #ffe5f0, #e1f3ff);
+  }
+  header h1 { margin: 0 0 8px; letter-spacing: 2px; }
+  header p { margin: 0; color: #6d607d; }
+  nav {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    padding: 16px;
+    background: white;
+    border-bottom: 1px solid #eee6f5;
+  }
+  button, input, select { font: inherit; }
+  nav button {
+    padding: 10px 22px;
+    border: 0;
+    border-radius: 24px;
+    background: #eee8f8;
+    color: #493761;
+    cursor: pointer;
+  }
+  nav button.active { background: #7655a5; color: white; }
+  main { max-width: 1400px; margin: auto; padding: 24px; }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    margin-bottom: 24px;
+  }
+  input, select {
+    padding: 11px 13px;
+    border: 1px solid #ded5e9;
+    border-radius: 10px;
+    background: white;
+  }
+  input { flex: 1; min-width: 180px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 20px 14px;
+  }
+  .card { text-align: center; cursor: pointer; min-width: 0; }
+  .card img {
+    width: 100%;
+    display: block;
+    border-radius: 9px;
+    box-shadow: 0 3px 10px #34224b20;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .card:hover img {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px #34224b30;
+  }
+  .card h3 { font-size: 14px; margin: 9px 0 4px; }
+  .card p { font-size: 12px; color: #796d87; margin: 0; }
+  .group-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 18px;
+  }
+  .group {
+    background: white; border-radius: 14px; overflow: hidden;
+    cursor: pointer; box-shadow: 0 3px 12px #34224b12;
+  }
+  .group img {
+    width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
+    display: block; background: #eee7f5;
+  }
+  .group h3 { text-align: center; padding: 12px; margin: 0; }
+  .back { margin-bottom: 18px; }
+  .hidden { display: none !important; }
+  .modal {
+    position: fixed; inset: 0; background: #171020e8;
+    display: flex; justify-content: center; align-items: center;
+    padding: 20px; z-index: 10;
+  }
+  .modal img {
+    max-width: min(90vw, 480px); max-height: 84vh;
+    object-fit: contain; border-radius: 10px;
+    box-shadow: 0 0 35px #ffffff25;
+  }
+  .close {
+    position: absolute; top: 18px; right: 22px;
+    color: white; background: none; border: 0;
+    font-size: 32px; cursor: pointer;
+  }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+  @media (max-width: 560px) {
+    main { padding: 16px; }
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>✦ IDOL CARD DEX ✦</h1>
+  <p>A collection of custom idol trading cards</p>
+</header>
+<nav>
+  <button id="allTab" class="active" onclick="showAll()">All Cards</button>
+  <button id="groupsTab" onclick="showGroups()">Groups</button>
+</nav>
+<main>
+  <section id="allSection">
+    <div class="controls">
+      <input id="search" placeholder="Search idol or card number..." oninput="renderCards()">
+      <select id="groupFilter" onchange="renderCards()">
+        <option value="">All groups</option>
+      </select>
+      <select id="rarityFilter" onchange="renderCards()">
+        <option value="">All rarities</option>
+      </select>
+    </div>
+    <div id="cardGrid" class="grid"></div>
+  </section>
+  <section id="groupsSection" class="hidden">
+    <div id="groupGrid" class="group-grid"></div>
+    <div id="groupDetail" class="hidden">
+      <button class="back" onclick="backToGroups()">← All groups</button>
+      <h2 id="groupTitle"></h2>
+      <p id="groupCount"></p>
+      <div id="memberGrid" class="grid"></div>
+    </div>
+  </section>
+</main>
+<div id="modal" class="modal hidden" onclick="closeModal()">
+  <button class="close" aria-label="Close" onclick="closeModal()">×</button>
+  <img id="modalImage" alt="Enlarged card" onclick="event.stopPropagation()">
+</div>
+<script>
+/* Replace these sample entries with your card data later. */
+const cards = [];
+const groups = [];
+
+function showAll() {
+  document.getElementById('allSection').classList.remove('hidden');
+  document.getElementById('groupsSection').classList.add('hidden');
+  document.getElementById('allTab').classList.add('active');
+  document.getElementById('groupsTab').classList.remove('active');
+}
+function showGroups() {
+  document.getElementById('allSection').classList.add('hidden');
+  document.getElementById('groupsSection').classList.remove('hidden');
+  document.getElementById('allTab').classList.remove('active');
+  document.getElementById('groupsTab').classList.add('active');
+  document.getElementById('groupGrid').classList.remove('hidden');
+  document.getElementById('groupDetail').classList.add('hidden');
+}
+function cardElement(card) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  const img = document.createElement('img');
+  img.src = card.image;
+  img.alt = card.member;
+  const name = document.createElement('h3');
+  name.textContent = card.member;
+  const caption = document.createElement('p');
+  caption.textContent = `${card.group} · #${card.number}`;
+  el.append(img, name, caption);
+  el.onclick = () => {
+    document.getElementById('modalImage').src = card.preview || card.image;
+    document.getElementById('modal').classList.remove('hidden');
+  };
+  return el;
+}
+function renderCards(list = cards) {
+  const search = document.getElementById('search').value.toLowerCase();
+  const group = document.getElementById('groupFilter').value;
+  const rarity = document.getElementById('rarityFilter').value;
+  const filtered = list.filter(c =>
+    (`${c.member} ${c.number} ${c.group}`).toLowerCase().includes(search) &&
+    (!group || c.group === group) &&
+    (!rarity || c.rarity === rarity)
+  );
+  const grid = document.getElementById('cardGrid');
+  grid.replaceChildren(...filtered.map(cardElement));
+}
+function openGroup(name) {
+  const g = groups.find(x => x.name === name);
+  const list = cards.filter(c => c.group === name);
+  document.getElementById('groupGrid').classList.add('hidden');
+  document.getElementById('groupDetail').classList.remove('hidden');
+  document.getElementById('groupTitle').textContent = name;
+  document.getElementById('groupCount').textContent = `${list.length} cards`;
+  const grid = document.getElementById('memberGrid');
+  grid.style.gridTemplateColumns = `repeat(${g.columns || 5}, minmax(0, 1fr))`;
+  grid.replaceChildren(...list.map(cardElement));
+}
+function backToGroups() {
+  document.getElementById('groupGrid').classList.remove('hidden');
+  document.getElementById('groupDetail').classList.add('hidden');
+}
+function closeModal() {
+  document.getElementById('modal').classList.add('hidden');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+function init() {
+  const groupNames = [...new Set(cards.map(c => c.group))];
+  const gf = document.getElementById('groupFilter');
+  groupNames.forEach(n => gf.add(new Option(n, n)));
+  const rf = document.getElementById('rarityFilter');
+  [...new Set(cards.map(c => c.rarity).filter(Boolean))]
+    .forEach(n => rf.add(new Option(n, n)));
+  renderCards();
+  const gg = document.getElementById('groupGrid');
+  gg.replaceChildren(...groups.map(g => {
+    const el = document.createElement('div');
+    el.className = 'group';
+    const img = document.createElement('img');
+    img.src = g.image;
+    img.alt = g.name;
+    const title = document.createElement('h3');
+    title.textContent = g.name;
+    el.append(img, title);
+    el.onclick = () => openGroup(g.name);
+    return el;
+  }));
+}
+init();
+</script>
+</body>
+</html>
