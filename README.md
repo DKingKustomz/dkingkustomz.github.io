@@ -1,2 +1,2 @@
 # dkingkustomz.github.io
-custom card showcase and collection
+custom idol card dex 
