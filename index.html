@@ -132,21 +132,34 @@
   pointer-events: none;
   opacity: var(--shine-opacity, 0);
 
-  background: repeating-linear-gradient(
-    var(--shine-angle, 135deg),
-    rgba(255, 80, 140, .38) 0%,
-    rgba(255, 220, 100, .42) 10%,
-    rgba(100, 255, 180, .42) 20%,
-    rgba(100, 200, 255, .45) 30%,
-    rgba(190, 120, 255, .42) 40%,
-    rgba(255, 120, 210, .38) 50%
-  );
+  background:
+    linear-gradient(
+      115deg,
+      transparent 0%,
+      rgba(255, 255, 255, .05) 25%,
+      rgba(255, 255, 255, .65) 48%,
+      rgba(255, 255, 255, .08) 54%,
+      transparent 70%
+    ),
+    linear-gradient(
+      var(--shine-angle, 135deg),
+      rgba(255, 40, 120, .55) 0%,
+      rgba(255, 180, 60, .48) 18%,
+      rgba(220, 255, 80, .42) 30%,
+      rgba(40, 255, 190, .50) 43%,
+      rgba(40, 170, 255, .55) 57%,
+      rgba(160, 80, 255, .52) 72%,
+      rgba(255, 50, 190, .50) 88%,
+      rgba(255, 40, 120, .55) 100%
+    );
 
-  background-size: 200% 200%;
+  background-size: 250% 250%, 200% 200%;
   background-position:
+    var(--shine-x, 50%) var(--shine-y, 50%),
     var(--shine-x, 50%) var(--shine-y, 50%);
+
   mix-blend-mode: color-dodge;
-filter: saturate(1.8);
+  filter: saturate(2);
   transition: opacity .15s;
 }
 
