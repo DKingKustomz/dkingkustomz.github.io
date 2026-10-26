@@ -682,7 +682,8 @@ async function init() {
 
     renderCards();
     renderGroups();
-    groupStatus.classList.add("hidden");
+    groupStatus.textContent = `${groups.length} groups`;
+    groupStatus.classList.remove("hidden");
   } catch (error) {
     console.error(error);
     cardStatus.classList.add("error");
