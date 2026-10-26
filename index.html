@@ -617,8 +617,24 @@ function fillSelect(select, values) {
 
 function renderGroups() {
   const gg = document.getElementById("groupGrid");
+  const sortBy = document.getElementById("groupSort").value;
 
-  gg.replaceChildren(...groups.map(g => {
+  const sortedGroups = [...groups].sort((a, b) => {
+    if (sortBy === "alphabetical") {
+      return a.name.localeCompare(b.name);
+    }
+
+    const setA = numberValue(a.set);
+    const setB = numberValue(b.set);
+
+    if (sortBy === "new-old") {
+      return setB - setA;
+    }
+
+    return setA - setB;
+  });
+
+  gg.replaceChildren(...sortedGroups.map(g => {
     const el = document.createElement("div");
     el.className = "group";
 
@@ -635,11 +651,8 @@ function renderGroups() {
     el.addEventListener("click", () => openGroup(g.name));
     return el;
   }));
-
-  document.getElementById("groupStatus").textContent = groups.length
-    ? `${groups.length} group${groups.length === 1 ? "" : "s"}`
-    : "No groups are set to Show on Site = TRUE.";
 }
+ document.getElementById("groupSort").addEventListener("change", renderGroups);
 
 async function init() {
   const cardStatus = document.getElementById("cardStatus");
