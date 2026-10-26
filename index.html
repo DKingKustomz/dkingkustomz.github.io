@@ -74,6 +74,7 @@
 }
 
 .card-art {
+  touch-action: pan-y;
   position: relative;
   overflow: hidden;
   border-radius: 9px;
@@ -464,7 +465,6 @@ function cardElement(card) {
 
   // Mouse-controlled tilt and holographic shine.
   el.addEventListener("pointermove", e => {
-    if (e.pointerType !== "mouse") return;
 
     const rect = art.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
@@ -508,7 +508,6 @@ modalCardArt.addEventListener("dragstart", e => e.preventDefault());
 
 // Apply the same mouse-controlled tilt and rainbow shine.
 modalCardArt.addEventListener("pointermove", e => {
-  if (e.pointerType !== "mouse") return;
 
   const rect = modalCardArt.getBoundingClientRect();
   const x = (e.clientX - rect.left) / rect.width;
